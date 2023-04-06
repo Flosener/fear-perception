@@ -3,13 +3,10 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Unity.VisualScripting;
-using Unity.XR.CoreUtils;
 using UnityEngine;
 using UnityEngine.UI;
-using UnityEngine.UIElements;
-using Image = UnityEngine.UI.Image;
 using Random = UnityEngine.Random;
+using Valve.VR;
 
 public class ExperimentManager : MonoBehaviour
 {
@@ -21,7 +18,10 @@ public class ExperimentManager : MonoBehaviour
     private bool _participantResponse;
     private bool _enableResponse;
     private bool _enableRating;
-    
+    [SerializeField] private SteamVR_Action_Boolean _response;
+    [SerializeField] private SteamVR_Action_Boolean _up;
+    [SerializeField] private SteamVR_Action_Boolean _down;
+
     // Scripts
     private ExperimentUI _uiManager;
     
@@ -50,14 +50,16 @@ public class ExperimentManager : MonoBehaviour
     private int _rating;
     private float _size;
 
-
     #endregion
 
     private IEnumerator Start()
     {
+        // To-do: Create data directory if non-existent
+        // Directory.CreateDirectory("Data");
+
         // Find necessary GO's
         _uiManager = GameObject.Find("Instructions").GetComponent<ExperimentUI>();
-        _participant = GameObject.Find("Camera").transform;
+        _participant = GameObject.Find("VRCamera").transform;
         _couchPos = GameObject.Find("sofa").transform.position;
         _focusPoint = GameObject.Find("FocusPoint");
         _imageStand = GameObject.Find("ImageStand");
@@ -68,11 +70,13 @@ public class ExperimentManager : MonoBehaviour
 
         // Show instructions to the participants, wait for them to begin the experiment and disable instructions.
         _beginExperiment = false;
+        Debug.Log("Start(), before instruction handler");
         StartCoroutine(HandleInstructions());
         yield return new WaitUntil(() => _beginExperiment);
         _beginExperiment = false;
-        
+
         // Start experiment.
+        Debug.Log("Start(), after instructions, before experiment start");
         StartCoroutine(Experiment(1f, 2*3, 3)); // condition x mode = 6 blocks á 10 trials
         yield return new WaitUntil(() => _experimentDone);
         
@@ -88,8 +92,10 @@ public class ExperimentManager : MonoBehaviour
     {
         GetResponse();
         _elapsedTime = Time.time - _startTime;
-        if (_stimulus == null && !_imageStand.activeSelf) return;
-        CalculateEngagement();
+        if (_imageStand.activeSelf || _stimulus != null)
+        {
+            CalculateEngagement();
+        }
     }
 
     private IEnumerator Experiment(float seconds, int blocks, int trials)
@@ -110,24 +116,32 @@ public class ExperimentManager : MonoBehaviour
                 _elapsedTime = 0f;
                 _startTime = Time.time;
                 _enableResponse = true;
+                Debug.Log($"Experiment(), waits for response ..., input: {_response.state}, flag: {_participantResponse}");
                 yield return new WaitUntil(() => _participantResponse || _elapsedTime >= 10f);
+                Debug.Log($"Experiment(), response given, input: {_response.state}, flag: {_participantResponse}");
                 _RT = _elapsedTime;
                 _participantResponse = false;
-                
+                Debug.Log($"Experiment(), response reset, input: {_response.state}, flag: {_participantResponse}");
+
                 // Remove stimulus after response
                 _imageStand.SetActive(false);
                 Destroy(_stimulus);
 
                 // After participant response, show rating UI
                 _enableRating = true;
+                Debug.Log($"Experiment(), response reset, rating enabled, input: {_response.state}, flag: {_participantResponse}");
                 _rating = 3;
                 _uiManager.instructions.text = $"Rating of uneasiness: {_rating}";
+                Debug.Log($"Experiment(), rating enabled, waiting for response ..., input: {_response.state}, flag: {_participantResponse}");
+                yield return new WaitForSeconds(1f);
                 yield return new WaitUntil(() => _participantResponse);
-                AddRecord(_participantID, i+1, j+1, _RT, _condition, _mode, _stimulusName, _size, _engagement, _rating, "Assets/Data/results.txt");
+                Debug.Log($"Experiment(), rating enabled, response given, input: {_response.state}, flag: {_participantResponse}");
+                AddRecord(_participantID, i+1, j+1, _RT, _condition, _mode, _stimulusName, _size, _engagement, _rating, "/fear-perception/Data/results.txt");
                 _uiManager.instructions.text = "";
                 _participantResponse = false;
                 _enableRating = false;
                 _enableResponse = false;
+                Debug.Log($"Experiment(), response given, rating disabled, input: {_response.state}, flag: {_participantResponse}");
             }
 
             // Only show "block ended" instructions if this was not the last block
@@ -135,6 +149,7 @@ public class ExperimentManager : MonoBehaviour
             {
                 _uiManager.instructions.text = "Block ended. Press 'SPACE' to start the next block.";
                 _enableResponse = true;
+                yield return new WaitForSeconds(1f);
                 yield return new WaitUntil(() => _participantResponse);
                 _uiManager.instructions.text = "";
                 _participantResponse = false;
@@ -186,6 +201,7 @@ public class ExperimentManager : MonoBehaviour
                     // Play animation in dynamic mode
                     if (_mode == "dynamic")
                     {
+                        // To-do: increase animation speed
                         var anim = stimulus.GetComponent<Animation>();
                         anim.PlayQueued("Spider_Idle", QueueMode.CompleteOthers);
                         anim.PlayQueued("Spider_Move", QueueMode.CompleteOthers);
@@ -217,23 +233,31 @@ public class ExperimentManager : MonoBehaviour
     private IEnumerator HandleInstructions()
     {
         _enableResponse = true;
-        
+
+        Debug.Log($"HandleInstructions(), waits for response ..., input: {_response.state}, flag: {_participantResponse}");
         _uiManager.instructions.text = "Welcome to your therapy session. Sit down on the couch and press 'SPACE' to proceed.";
+        yield return new WaitForSeconds(1f);
         yield return new WaitUntil(() => _participantResponse);
-        _participantResponse = false;
+        Debug.Log($"HandleInstructions(), response given, input: {_response.state}, flag: {_participantResponse}");
         
+        Debug.Log($"HandleInstructions(), response given, after 0.5s, input: {_response.state}, flag: {_participantResponse}");
+        _participantResponse = false;
+        Debug.Log($"HandleInstructions(), after 0.5s, response reset, input: {_response.state}, flag: {_participantResponse}");
+
         _uiManager.instructions.text = "In the following trials you will encounter two types of animals which you have to " +
                                        "engage with as much as possible. When you think it is enough, just " +
                                        "press 'SPACE' to end the trial. Press 'SPACE' to proceed.";
+        yield return new WaitForSeconds(1f);
         yield return new WaitUntil(() => _participantResponse);
         _participantResponse = false;
 
         _uiManager.instructions.text = "After each trial please rate your uneasiness during the trial. The rating ranges " +
                                        "from 1 (I felt great) over 3 (neutral) to 5 (I felt very uneasy). " +
                                        "Press 'SPACE' to begin the experiment.";
+        yield return new WaitForSeconds(1f);
         yield return new WaitUntil(() => _participantResponse);
         _participantResponse = false;
-        
+
         _uiManager.instructions.text = "";
         _beginExperiment = true;
         _enableResponse = false;
@@ -241,9 +265,11 @@ public class ExperimentManager : MonoBehaviour
     
     private void GetResponse()
     {
-        // If P sits on couch and gives input, proceed with experiment   
+        _participantResponse = false;
+
+        // If P sits on couch and gives input, proceed with experiment
         if (_enableResponse 
-            && Input.GetKeyDown(KeyCode.Space) 
+            && _response.state
             && Math.Abs(_participant.position.x - _couchPos.x) <= 0.85f 
             && Math.Abs(_participant.position.z - _couchPos.z) <= 0.45f)
         {
@@ -251,13 +277,13 @@ public class ExperimentManager : MonoBehaviour
         }
 
         // After-trial uneasiness ratings
-        if (_enableRating && Input.GetKeyDown(KeyCode.UpArrow) && _rating < 5)
+        if (_enableRating && _up.state && _rating < 5)
         {
             _rating++;
             _uiManager.instructions.text = $"Rating of uneasiness: {_rating}";
         }
 
-        if (_enableRating && Input.GetKeyDown(KeyCode.DownArrow) && _rating > 1)
+        if (_enableRating && _down.state && _rating > 1)
         {
             _rating--;
             _uiManager.instructions.text = $"Rating of uneasiness: {_rating}";
