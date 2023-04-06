@@ -21,7 +21,6 @@ public class ExperimentManager : MonoBehaviour
     [SerializeField] private SteamVR_Action_Boolean _response;
     [SerializeField] private SteamVR_Action_Boolean _up;
     [SerializeField] private SteamVR_Action_Boolean _down;
-
     // Scripts
     private ExperimentUI _uiManager;
     
@@ -62,7 +61,7 @@ public class ExperimentManager : MonoBehaviour
         // Directory.CreateDirectory("Data");
 
         // Find necessary GO's
-        _uiManager = GameObject.Find("Instructions").GetComponent<ExperimentUI>();
+        _uiManager = GameObject.Find("InstructionsCanvas").GetComponent<ExperimentUI>();
         _participant = GameObject.Find("VRCamera").transform;
         _leftHand = GameObject.Find("LeftHand").transform;
         _rightHand = GameObject.Find("RightHand").transform;
@@ -70,6 +69,10 @@ public class ExperimentManager : MonoBehaviour
         _focusPoint = GameObject.Find("FocusPoint");
         _imageStand = GameObject.Find("ImageStand");
         _stimuliRoot = GameObject.Find("Stimuli").transform;
+        
+        _down.AddOnStateDownListener(LeftPressed, SteamVR_Input_Sources.LeftHand);
+        _up.AddOnStateDownListener(RightPressed, SteamVR_Input_Sources.RightHand);
+        _response.AddOnStateDownListener(GetResponse, SteamVR_Input_Sources.Any);
 
         _imageStand.SetActive(false);
         _focusPoint.SetActive(false);
@@ -81,7 +84,7 @@ public class ExperimentManager : MonoBehaviour
         _beginExperiment = false;
 
         // Start experiment.
-        StartCoroutine(Experiment(1f, 2*3, 20)); // condition x mode = 6 blocks á 10 trials
+        StartCoroutine(Experiment(1f, 2*3, 10)); // condition x mode = 6 blocks á 10 trials
         yield return new WaitUntil(() => _experimentDone);
         
         // Experiment ended
@@ -94,7 +97,6 @@ public class ExperimentManager : MonoBehaviour
     // Check for user input each frame.
     private void Update()
     {
-        GetResponse();
         CalculateEngagement();
         _elapsedTime = Time.time - _startTime;
     }
@@ -254,33 +256,6 @@ public class ExperimentManager : MonoBehaviour
         _beginExperiment = true;
         _enableResponse = false;
     }
-    
-    private void GetResponse()
-    {
-        _participantResponse = false;
-
-        // If P sits on couch and gives input, proceed with experiment
-        if (_enableResponse 
-            && _response.state
-            && Math.Abs(_participant.position.x - _couchPos.x) <= 0.85f 
-            && Math.Abs(_participant.position.z - _couchPos.z) <= 0.45f)
-        {
-            _participantResponse = true;
-        }
-
-        // After-trial uneasiness ratings
-        if (_enableRating && _up.state && _rating < 5)
-        {
-            _rating++;
-            _uiManager.instructions.text = $"Rating of uneasiness: {_rating}";
-        }
-
-        if (_enableRating && _down.state && _rating > 1)
-        {
-            _rating--;
-            _uiManager.instructions.text = $"Rating of uneasiness: {_rating}";
-        }
-    }
 
     private void CalculateEngagement()
     {
@@ -332,6 +307,35 @@ public class ExperimentManager : MonoBehaviour
         catch (Exception ex)
         {
             throw new ApplicationException("An error occured: " + ex);
+        }
+    }
+    
+    private void GetResponse(SteamVR_Action_Boolean fromActionBoolean, SteamVR_Input_Sources fromInputSources)
+    {
+        // If P sits on couch and gives input, proceed with experiment
+        if (_enableResponse
+            && Math.Abs(_participant.position.x - _couchPos.x) <= 0.85f 
+            && Math.Abs(_participant.position.z - _couchPos.z) <= 0.45f)
+        {
+            _participantResponse = true;
+        }
+    }
+
+    private void LeftPressed(SteamVR_Action_Boolean fromActionBoolean, SteamVR_Input_Sources fromInputSources)
+    {
+        if (_enableRating && _rating > 1)
+        {
+            _rating--;
+            _uiManager.instructions.text = $"Rating of uneasiness: {_rating}";
+        }
+    }
+    
+    private void RightPressed(SteamVR_Action_Boolean fromActionBoolean, SteamVR_Input_Sources fromInputSources)
+    {
+        if (_enableRating && _rating < 5)
+        {
+            _rating++;
+            _uiManager.instructions.text = $"Rating of uneasiness: {_rating}";
         }
     }
 }
