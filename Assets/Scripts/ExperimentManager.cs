@@ -27,6 +27,8 @@ public class ExperimentManager : MonoBehaviour
     
     // GOs
     private Transform _participant;
+    private Transform _leftHand;
+    private Transform _rightHand;
     private Vector3 _couchPos;
     private Vector3 _stimulusPos;
     [SerializeField] private List<GameObject> _stimuli;
@@ -38,7 +40,9 @@ public class ExperimentManager : MonoBehaviour
     // Helpers
     private float _startTime;
     private float _elapsedTime;
-    private float _distance;
+    private float _distanceHead;
+    private float _distanceHandLeft;
+    private float _distanceHandRight;
     
     // Data variables
     [SerializeField] private int _participantID;
@@ -60,6 +64,8 @@ public class ExperimentManager : MonoBehaviour
         // Find necessary GO's
         _uiManager = GameObject.Find("Instructions").GetComponent<ExperimentUI>();
         _participant = GameObject.Find("VRCamera").transform;
+        _leftHand = GameObject.Find("LeftHand").transform;
+        _rightHand = GameObject.Find("RightHand").transform;
         _couchPos = GameObject.Find("sofa").transform.position;
         _focusPoint = GameObject.Find("FocusPoint");
         _imageStand = GameObject.Find("ImageStand");
@@ -70,14 +76,12 @@ public class ExperimentManager : MonoBehaviour
 
         // Show instructions to the participants, wait for them to begin the experiment and disable instructions.
         _beginExperiment = false;
-        Debug.Log("Start(), before instruction handler");
         StartCoroutine(HandleInstructions());
         yield return new WaitUntil(() => _beginExperiment);
         _beginExperiment = false;
 
         // Start experiment.
-        Debug.Log("Start(), after instructions, before experiment start");
-        StartCoroutine(Experiment(1f, 2*3, 3)); // condition x mode = 6 blocks á 10 trials
+        StartCoroutine(Experiment(1f, 2*3, 20)); // condition x mode = 6 blocks á 10 trials
         yield return new WaitUntil(() => _experimentDone);
         
         // Experiment ended
@@ -91,11 +95,8 @@ public class ExperimentManager : MonoBehaviour
     private void Update()
     {
         GetResponse();
+        CalculateEngagement();
         _elapsedTime = Time.time - _startTime;
-        if (_imageStand.activeSelf || _stimulus != null)
-        {
-            CalculateEngagement();
-        }
     }
 
     private IEnumerator Experiment(float seconds, int blocks, int trials)
@@ -116,12 +117,8 @@ public class ExperimentManager : MonoBehaviour
                 _elapsedTime = 0f;
                 _startTime = Time.time;
                 _enableResponse = true;
-                Debug.Log($"Experiment(), waits for response ..., input: {_response.state}, flag: {_participantResponse}");
-                yield return new WaitUntil(() => _participantResponse || _elapsedTime >= 10f);
-                Debug.Log($"Experiment(), response given, input: {_response.state}, flag: {_participantResponse}");
-                _RT = _elapsedTime;
+                yield return new WaitUntil(() => _participantResponse || _elapsedTime >= 30f);
                 _participantResponse = false;
-                Debug.Log($"Experiment(), response reset, input: {_response.state}, flag: {_participantResponse}");
 
                 // Remove stimulus after response
                 _imageStand.SetActive(false);
@@ -129,19 +126,15 @@ public class ExperimentManager : MonoBehaviour
 
                 // After participant response, show rating UI
                 _enableRating = true;
-                Debug.Log($"Experiment(), response reset, rating enabled, input: {_response.state}, flag: {_participantResponse}");
                 _rating = 3;
                 _uiManager.instructions.text = $"Rating of uneasiness: {_rating}";
-                Debug.Log($"Experiment(), rating enabled, waiting for response ..., input: {_response.state}, flag: {_participantResponse}");
-                yield return new WaitForSeconds(1f);
+                yield return new WaitForSeconds(0.5f);
                 yield return new WaitUntil(() => _participantResponse);
-                Debug.Log($"Experiment(), rating enabled, response given, input: {_response.state}, flag: {_participantResponse}");
                 AddRecord(_participantID, i+1, j+1, _RT, _condition, _mode, _stimulusName, _size, _engagement, _rating, "/fear-perception/Data/results.txt");
                 _uiManager.instructions.text = "";
                 _participantResponse = false;
                 _enableRating = false;
                 _enableResponse = false;
-                Debug.Log($"Experiment(), response given, rating disabled, input: {_response.state}, flag: {_participantResponse}");
             }
 
             // Only show "block ended" instructions if this was not the last block
@@ -149,7 +142,7 @@ public class ExperimentManager : MonoBehaviour
             {
                 _uiManager.instructions.text = "Block ended. Press 'SPACE' to start the next block.";
                 _enableResponse = true;
-                yield return new WaitForSeconds(1f);
+                yield return new WaitForSeconds(0.5f);
                 yield return new WaitUntil(() => _participantResponse);
                 _uiManager.instructions.text = "";
                 _participantResponse = false;
@@ -203,6 +196,9 @@ public class ExperimentManager : MonoBehaviour
                     {
                         // To-do: increase animation speed
                         var anim = stimulus.GetComponent<Animation>();
+                        anim["Spider_Idle"].speed = 2.0f;
+                        anim["Spider_Move"].speed = 2.0f;
+                        anim["Spider_Attack"].speed = 2.0f;
                         anim.PlayQueued("Spider_Idle", QueueMode.CompleteOthers);
                         anim.PlayQueued("Spider_Move", QueueMode.CompleteOthers);
                         anim.PlayQueued("Spider_Attack", QueueMode.CompleteOthers);
@@ -234,27 +230,23 @@ public class ExperimentManager : MonoBehaviour
     {
         _enableResponse = true;
 
-        Debug.Log($"HandleInstructions(), waits for response ..., input: {_response.state}, flag: {_participantResponse}");
         _uiManager.instructions.text = "Welcome to your therapy session. Sit down on the couch and press 'SPACE' to proceed.";
-        yield return new WaitForSeconds(1f);
+        yield return new WaitForSeconds(0.5f);
         yield return new WaitUntil(() => _participantResponse);
-        Debug.Log($"HandleInstructions(), response given, input: {_response.state}, flag: {_participantResponse}");
         
-        Debug.Log($"HandleInstructions(), response given, after 0.5s, input: {_response.state}, flag: {_participantResponse}");
         _participantResponse = false;
-        Debug.Log($"HandleInstructions(), after 0.5s, response reset, input: {_response.state}, flag: {_participantResponse}");
 
         _uiManager.instructions.text = "In the following trials you will encounter two types of animals which you have to " +
                                        "engage with as much as possible. When you think it is enough, just " +
                                        "press 'SPACE' to end the trial. Press 'SPACE' to proceed.";
-        yield return new WaitForSeconds(1f);
+        yield return new WaitForSeconds(0.5f);
         yield return new WaitUntil(() => _participantResponse);
         _participantResponse = false;
 
         _uiManager.instructions.text = "After each trial please rate your uneasiness during the trial. The rating ranges " +
                                        "from 1 (I felt great) over 3 (neutral) to 5 (I felt very uneasy). " +
                                        "Press 'SPACE' to begin the experiment.";
-        yield return new WaitForSeconds(1f);
+        yield return new WaitForSeconds(0.5f);
         yield return new WaitUntil(() => _participantResponse);
         _participantResponse = false;
 
@@ -292,16 +284,34 @@ public class ExperimentManager : MonoBehaviour
 
     private void CalculateEngagement()
     {
+        if (!_imageStand.activeSelf && _stimulus == null) return;
+        
         // Engagement score is the euclidean distance of the participant to the stimulus in 3D space
         _stimulusPos = _mode == "image" ? _imageStand.transform.position : _stimulus.transform.position;
-        _distance = (float) Math.Sqrt(Math.Pow(_participant.position.x - _stimulusPos.x, 2) +
+        _distanceHead = (float) Math.Sqrt(Math.Pow(_participant.position.x - _stimulusPos.x, 2) +
                                       Math.Pow(_participant.position.y - _stimulusPos.y, 2) +
                                       Math.Pow(_participant.position.z - _stimulusPos.z, 2));
+        _distanceHandLeft = (float) Math.Sqrt(Math.Pow(_leftHand.position.x - _stimulusPos.x, 2) +
+                                          Math.Pow(_leftHand.position.y - _stimulusPos.y, 2) +
+                                          Math.Pow(_leftHand.position.z - _stimulusPos.z, 2));
+        _distanceHandRight = (float) Math.Sqrt(Math.Pow(_rightHand.position.x - _stimulusPos.x, 2) +
+                                          Math.Pow(_rightHand.position.y - _stimulusPos.y, 2) +
+                                          Math.Pow(_rightHand.position.z - _stimulusPos.z, 2));
         
         // Update engagement score
-        if (_distance < _engagement && _distance != 0f)
+        if (_distanceHead < _engagement && _distanceHead != 0f)
         {
-            _engagement = 1/_distance;
+            _engagement = 1/_distanceHead;
+        }
+        
+        if (_distanceHandLeft < _engagement && _distanceHandLeft != 0f)
+        {
+            _engagement = 1/_distanceHandLeft;
+        }
+        
+        if (_distanceHandRight < _engagement && _distanceHandRight != 0f)
+        {
+            _engagement = 1/_distanceHandRight;
         }
     }
     
