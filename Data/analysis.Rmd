@@ -1,0 +1,202 @@
+---
+title: "Spider repulsion analysis"
+author: "Florian Pätzold"
+output: html_document
+date: "2023-04-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+Import all necessary packages.
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(outliers)
+#library(tidyverse)
+```
+
+# Data preprocessing
+
+Set working directory, load the data.
+
+```{r}
+# setwd("PATH")
+data <- read.csv("results.csv", header = FALSE, sep=",")
+colnames(data) <- c("subject","block","trial","time", "condition", "mode", "name", "size", "engagement", "rating")
+data <- data %>% select("block", "trial", "condition", "mode", "name", "size", "engagement", "rating")
+data$rating <- as.factor(data$rating)
+head(data)
+```
+
+```{r}
+# Grubbs' test by condition
+grubbs_results <- by(data$engagement, data$condition, grubbs.test)
+print(grubbs_results)
+
+# remove outliers
+#data <- data %>% filter(engagement < 7.9)
+```
+
+
+# Data visualization
+
+```{r}
+# Calculate summary statstics (e.g. differences in engagement scores in condition x mode, ...)
+```
+
+
+```{r}
+# barplot: x = rating, y = count
+data %>% group_by(condition, rating) %>% count() %>%
+  ggplot(aes(x = rating, y = n, fill = condition)) +
+  geom_bar(stat = "identity", position = "dodge", color="black") +
+  labs(
+    title = "Count of uneasiness ratings per condition", 
+    x = "\n Rating", 
+    y = "Count \n"
+    ) +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5), 
+    plot.subtitle = element_text(hjust = 0.5),
+    legend.position = "right") # legend.title = element_blank()
+
+# boxplot: x = rating, y = engagement
+data %>%
+  ggplot(aes(x = rating, y = engagement, fill = condition)) +
+  geom_boxplot() +
+  labs(
+    title = "Engagement scores for each uneasiness rating per condition",
+    x = "\n Rating", 
+    y = "Engagement \n"
+    ) +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5), 
+    plot.subtitle = element_text(hjust = 0.5),
+    legend.position = "right")
+
+# boxplot: x = condition (group mode), y = engagement
+data %>%
+  ggplot(aes(x = condition, y = engagement, fill = mode)) +
+  geom_boxplot() +
+  labs(
+    title = "Engagement score for each condition per mode", 
+    x = NULL, 
+    y = "Engagement \n"
+    ) +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5), 
+    plot.subtitle = element_text(hjust = 0.5),
+    legend.position = "right")
+
+# barplot: x = condition (group mode), y = rating
+data %>% group_by(condition, mode) %>% summarise(mean_rating = mean(as.integer(rating))) %>% 
+  ggplot(aes(x = condition, y = mean_rating, fill = mode)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(
+    title = "Mean rating for each condition per mode", 
+    x = NULL, 
+    y = "Rating \n"
+    ) +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5), 
+    plot.subtitle = element_text(hjust = 0.5),
+    legend.position = "right")
+
+# lineplot: x = block (group condition), y = rating
+data %>% group_by(condition, block) %>% summarise(mean_rating = mean(as.integer(rating))) %>% 
+  ggplot(aes(x = block, y = mean_rating, color = condition)) +
+  geom_line(size=1) +
+  labs(
+    title = "Mean rating for each block per condition", 
+    x = "\n Block", 
+    y = "Rating \n"
+    ) +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5), 
+    plot.subtitle = element_text(hjust = 0.5),
+    legend.position = "right") +
+  scale_x_continuous(breaks = c(1,2,3,4,5,6))
+
+# lineplot: x = block (group condition), y = engagement
+data %>% group_by(condition, block) %>% summarise(mean_engagement = mean(engagement)) %>% 
+  ggplot(aes(x = block, y = mean_engagement, color = condition)) +
+  geom_line(size=1) +
+  labs(
+    title = "Mean engagement for each block per condition", 
+    x = "\n Block", 
+    y = "Rating \n"
+    ) +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5), 
+    plot.subtitle = element_text(hjust = 0.5),
+    legend.position = "right") +
+  scale_x_continuous(breaks = c(1,2,3,4,5,6))
+```
+# Statistical testing
+
+### Normality assumption check
+
+```{r}
+# Density plot
+data %>% 
+  ggplot(aes(x = engagement, fill = condition)) +
+  geom_density(alpha=0.3)
+```
+
+```{r}
+data_critical <- data %>% filter(condition == "critical")
+data_control <- data %>% filter(condition == "control")
+
+# Check for normality using histogram and normal probability plot for each condition
+par(mfrow=c(2,2)) # create 2x2 plot grid
+# Histogram and normal probability plot for auditory condition
+hist(data_critical$engagement, main="Histogram of critical engagement", xlab="Engagement")
+qqnorm(data_critical$engagement, main="Normal Probability Plot of critical engagement")
+qqline(data_critical$engagement)
+# Histogram and normal probability plot for tactile condition
+hist(data_control$engagement, main="Histogram of control engagement", xlab="Engagement")
+qqnorm(data_control$engagement, main="Normal Probability Plot of control engagement")
+qqline(data_control$engagement)
+# Perform Shapiro-Wilk test for normality for each condition
+shapiro.test(data_critical$engagement)
+shapiro.test(data_control$engagement)
+```
+The data does not seem to be normally distributed. We use non-parametric tests for group comparisons.
+
+### Hypothesis testing
+
+```{r}
+# get mode data
+data_image <- data %>% filter(mode == "image")
+data_static <- data %>% filter(mode == "static")
+data_dynamic <- data %>% filter(mode == "dynamic")
+
+# engagement (continuous) ~ condition + mode (cat) -> wilcoxon rank sum (unpaired) comparison test
+wilcox.test(data_critical$engagement, data_control$engagement, paired = FALSE, alternative = "less") # ~*
+# >> no significant diff between conditions, probably because I do not fear spiders and data is pretty randomly generated by me
+
+wilcox.test(data_image$engagement, data_static$engagement, paired = FALSE) # **
+wilcox.test(data_image$engagement, data_dynamic$engagement, paired = FALSE) # ***
+wilcox.test(data_static$engagement, data_dynamic$engagement, paired = FALSE) # ~*
+# >> significant diff between modes image with both oter, but not between static and dynamic mode (if you already repulse spiders, you will not repulse them a lot more only because they now move)
+
+# rating (cat) ~ condition + mode (cat) -> Chi^2 correlation test
+chisq.test(data$rating, data$condition) # ***
+chisq.test(data$rating, data$mode) # ~*
+# >> condition & rating are dependent/correlated which was to expected, interestingly mode and rating show no significant correlation which suggests that the rating is not dependent on the mode (and vv)
+
+# before/after comparison for each condition and between conditions (should use follow up experiment) (test for habituation, diminished repulsion)
+
+# get block data (before/after)
+data_before <- data %>% filter(block <= 3)
+data_after <- data %>% filter(block >= 4)
+data_before_critical <- data %>% filter(block <= 3, condition == "critical")
+data_after_critical <- data %>% filter(block >= 3, condition == "critical")
+data_before_control <- data %>% filter(block <= 3, condition == "control")
+data_after_control <- data %>% filter(block >= 3, condition == "control")
+
+# hypothesis: engagement is higher "after" than "before" across conditions (should be signed rank with paired samples, but data vectors do not have same length because randomly sampling the condition does not yield same number of trials per condition)
+wilcox.test(data_before$engagement, data_after$engagement, paired = TRUE, alternative = "less") # ~*
+wilcox.test(data_before_critical$engagement, data_after_critical$engagement, alternative = "less") # ~*
+wilcox.test(data_before_control$engagement, data_after_control$engagement, alternative = "less") # ~*
+# >> no significant increase in engagement (habituation, repulsion decrease), probably because n=1 and bad data, but also because # habituation may rather cause P to not engage more because stimuli are already known
+```
+
+
